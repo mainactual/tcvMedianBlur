@@ -47,15 +47,26 @@ public:
 	}
 	~Histogram(){}
 
-	// i must be -1 or +1
-	void insert( unsigned int val, int i ) 
+	void insert( unsigned int val ) 
 	{
-		m_count += i;
+		m_count += 1;
 		val &= mask;
 		std::vector< Vec >::reverse_iterator it = m_h.rbegin();
 		while ( it != m_h.rend() )
 		{
-			(*it)[ val ] += i;
+			(*it)[ val ] += 1;
+			val /= m_N;
+			++it;
+		}
+	}
+	void erase( unsigned int val ) 
+	{
+		m_count -= 1;
+		val &= mask;
+		std::vector< Vec >::reverse_iterator it = m_h.rbegin();
+		while ( it != m_h.rend() )
+		{
+			(*it)[ val ] -= 1;
 			val /= m_N;
 			++it;
 		}
@@ -151,11 +162,11 @@ public:
 				for (x=0;x<d;++x)
 					*(p+x) = compute_boundscheck( x, y, vec );
 				
-				FillHistogram( d, y, vec, _where, histogram );
+				FillHistogram( d, y, histogram );
 				*(p+d) = histogram.getmedian();
 				for (x=xmin;x<xmax;++x)
 				{
-					UpdateHistogram( x, y, vec, _where, histogram );
+					UpdateHistogram( x, y, histogram );
 					*(p+x) = histogram.getmedian();
 				}
 				for (x=xmax;x<_xmax;++x)
@@ -182,15 +193,13 @@ protected:
 		int ymin = y-m_R;
 		if ( ymin < 0 ) ymin = 0;
 		
-		int xx,yy;
 		unsigned int u = 0;
-		unsigned short *p;
 
-		for (yy=ymin;yy<=ymax;++yy)
+		for (int yy=ymin;yy<=ymax;++yy)
 		{
-			p = TCV_GET_LINE_PTR( unsigned short, m_pSrc, m_srcStride, yy );
+			unsigned short * p = TCV_GET_LINE_PTR( unsigned short, m_pSrc, m_srcStride, yy );
 
-			for (xx=xmin;xx<=xmax;++xx, ++u)
+			for (int xx=xmin;xx<=xmax;++xx, ++u)
 			{
 				vec[u]  = *(p+xx);
 			}
@@ -198,9 +207,9 @@ protected:
 		// regular median
 		std::vector< unsigned short >::iterator it = vec.begin() + u/2;
 		std::nth_element( vec.begin(), it, vec.begin()+u );
-		return (u%2==0) ? ( *it + *(it-1) )/(unsigned short)2 : *it;
+		return *it;
 	}
-	void FillHistogram( int x, int y, std::vector< unsigned short > & vec, int & _where, Histogram & histogram ) const
+	void FillHistogram( int x, int y, Histogram & histogram ) const
 	{
 		histogram.clear();
 		const int xmax = x+m_R;
@@ -208,50 +217,30 @@ protected:
 		const int xmin = x-m_R;
 		const int ymin = y-m_R;
 		
-		int xx,yy;
-		unsigned int u = 0;
-		unsigned short *p;
-
-		for (yy=ymin;yy<=ymax;++yy)
+		for (int yy=ymin;yy<=ymax;++yy)
 		{
-			p = TCV_GET_LINE_PTR( unsigned short, m_pSrc, m_srcStride, yy );
+			unsigned short * p = TCV_GET_LINE_PTR( unsigned short, m_pSrc, m_srcStride, yy );
 
-			for (xx=xmin;xx<=xmax;++xx, ++u)
+			for (int xx=xmin;xx<=xmax;++xx)
 			{
-				unsigned short val  = *(p+xx);
-				vec[u] = val;
-				histogram.insert( val, 1 );
+				histogram.insert( *(p+xx) );
 			}
 		}
-		_where = 0;
 	}
-	void UpdateHistogram( int x, int y, std::vector< unsigned short > & vec, int & _where, Histogram & histogram ) const
+	void UpdateHistogram( int x, int y, Histogram & histogram ) const
 	{
-		const int dim = 2*m_R+1;
-		for ( int u = _where; u < vec.size(); u += dim )
+		const int ymax = y+m_R;
+		const int ymin = y-m_R;
+		const int xx_remove = x-m_R-1;
+		const int xx_insert = x+m_R;
+
+		for (int yy=ymin;yy<=ymax;++yy)
 		{
-			histogram.insert( vec[u], -1 );
+			unsigned short * p = TCV_GET_LINE_PTR( unsigned short, m_pSrc, m_srcStride, yy );
+
+			histogram.erase( *( p+xx_remove) );
+			histogram.insert( *( p+xx_insert) );
 		}
-		int ymax = y+m_R;
-		int ymin = y-m_R;
-		int xx = x+m_R;
-		int yy;
-		int u = _where;
-		unsigned short *p;
-
-		for (yy=ymin;yy<=ymax;++yy)
-		{
-			p = TCV_GET_LINE_PTR( unsigned short, m_pSrc, m_srcStride, yy );
-
-			unsigned short val  = *(p+xx);
-			vec[u] = val;
-
-			histogram.insert( val, 1 );
-			u += dim;
-		}
-		++_where;
-		if ( _where >= dim )
-			_where = 0;
 	}
 
 	unsigned char *m_pDst;
